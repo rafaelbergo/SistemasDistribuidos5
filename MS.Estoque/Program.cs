@@ -3,6 +3,8 @@ using Foundation.Keys;
 using MS.Estoque.Services;
 using RabbitMQ.Client;
 using Scalar.AspNetCore;
+using MS.Estoque.GraphQL;
+using Path = System.IO.Path;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -32,6 +34,9 @@ builder.Services.AddSingleton(new EstoqueManager(inventoryFilePath));
 builder.Services.AddHostedService<EstoqueConsumerService>();
 
 builder.Services.AddControllers();
+
+builder.AddGraphQL().AddQueryType<ProdutosQuery>();
+
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
@@ -49,5 +54,7 @@ app.UseHttpsRedirection();
 app.UseAuthorization();
 
 app.MapControllers();
+
+app.MapGraphQL();
 
 app.Run();
