@@ -54,7 +54,9 @@ builder.Services.AddControllers();
 
 builder.AddGraphQL()
     .AddQueryType<ProdutosQuery>()
-    .AddMutationType<PedidosMutation>();
+    .AddMutationType<PedidosMutation>()
+    .AddSubscriptionType<PedidoSubscriptions>()
+    .AddInMemorySubscriptions();
 
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
@@ -75,6 +77,8 @@ app.UseCors("AllowFrontend");
 app.UseAuthorization();
 
 app.MapControllers();
+
+app.UseWebSockets();
 
 app.MapGraphQL();
 

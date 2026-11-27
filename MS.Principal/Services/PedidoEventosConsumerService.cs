@@ -7,6 +7,7 @@ using RabbitMQ.Client.Events;
 using System.Text;
 using System.Text.Json;
 using Path = System.IO.Path;
+using HotChocolate.Subscriptions;
 
 namespace MS.Principal.Services;
 
@@ -19,6 +20,7 @@ public class PedidoEventosConsumerService : BackgroundService
     private readonly KeyConfig _keyConfig;
     private readonly PedidoEventosHub _hub;
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ITopicEventSender _topicEventSender;
 
     private static readonly string[] RoutingKeys =
     [
@@ -30,13 +32,14 @@ public class PedidoEventosConsumerService : BackgroundService
         "pedido.enviado",
     ];
 
-    public PedidoEventosConsumerService(IConnection connection, SignatureService signatureService, KeyConfig keyConfig, PedidoEventosHub hub, IServiceScopeFactory scopeFactory)
+    public PedidoEventosConsumerService(IConnection connection, SignatureService signatureService, KeyConfig keyConfig, PedidoEventosHub hub, IServiceScopeFactory scopeFactory, ITopicEventSender topicEventSender)
     {
         _connection = connection;
         _signatureService = signatureService;
         _keyConfig = keyConfig;
         _hub = hub;
         _scopeFactory = scopeFactory;
+        _topicEventSender = topicEventSender;
     }
 
     protected override async Task ExecuteAsync(CancellationToken ct)
@@ -106,8 +109,11 @@ public class PedidoEventosConsumerService : BackgroundService
                 return;
 
             var pendente = message.Content;
-            _hub.Publicar(pendente.ClienteId, new PedidoStatusEvento(
-                pendente.PedidoId, "pagamento_pendente", "Aguardando pagamento", pendente.CheckoutUrl, message.Timestamp));
+            var evento = new PedidoStatusEvento(pendente.PedidoId, "pagamento_pendente", "Aguardando pagamento", pendente.CheckoutUrl, message.Timestamp);
+
+            _hub.Publicar(pendente.ClienteId, evento);
+
+            await _topicEventSender.SendAsync(pendente.ClienteId, evento);
         }
         else
         {
@@ -126,7 +132,11 @@ public class PedidoEventosConsumerService : BackgroundService
             };
 
             var pedido = message.Content;
-            _hub.Publicar(pedido.ClienteId, new PedidoStatusEvento(pedido.Id, status, mensagem, null, message.Timestamp));
+            var evento = new PedidoStatusEvento(pedido.Id, status, mensagem, null, message.Timestamp);
+
+            _hub.Publicar(pedido.ClienteId, evento);
+
+            await _topicEventSender.SendAsync(pedido.ClienteId, evento);
 
             // Refused payment cancels the order, so MS.Estoque releases the reserved items
             if (routingKey == "pagamento.recusado")
