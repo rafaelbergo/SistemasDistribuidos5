@@ -30,6 +30,7 @@ public class PedidoEventosConsumerService : BackgroundService
         "pagamento.aprovado",
         "pagamento.recusado",
         "pedido.enviado",
+        "promocao.gerada"
     ];
 
     public PedidoEventosConsumerService(IConnection connection, SignatureService signatureService, KeyConfig keyConfig, PedidoEventosHub hub, IServiceScopeFactory scopeFactory, ITopicEventSender topicEventSender)
@@ -102,6 +103,26 @@ public class PedidoEventosConsumerService : BackgroundService
 
     private async Task ProcessarEventoAsync(string routingKey, string json)
     {
+        if (routingKey == "promocao.gerada")
+        {
+            var message = LerMensagemAssinada<Promocao>(json);
+            if (message == null)
+                return;
+
+            var promocao = message.Content;
+            if (promocao.Categoria is not ("A" or "B" or "C"))
+            {
+                Console.WriteLine("[MS.Principal] Categoria de promoção inválida.");
+                return;
+            }
+
+            await _topicEventSender.SendAsync($"promocao.{promocao.Categoria}", promocao);
+
+            Console.WriteLine($"[MS.Principal] Promoção recebida: {promocao.Produto} - Categoria {promocao.Categoria}");
+
+            return;
+        }
+
         if (routingKey == "pagamento.pendente")
         {
             var message = LerMensagemAssinada<PagamentoPendente>(json);

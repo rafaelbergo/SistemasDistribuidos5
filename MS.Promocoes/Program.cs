@@ -1,6 +1,7 @@
 using Foundation;
 using Foundation.Keys;
 using Foundation.Models;
+using Foundation.Services;
 using MS.Promocoes.Services;
 using RabbitMQ.Client;
 using System.Text;
@@ -22,24 +23,21 @@ var factory = new ConnectionFactory { HostName = "localhost" };
 if (Environment.GetEnvironmentVariable("RabbitMq__Uri") is { } rabbitUri)
     factory.Uri = new Uri(rabbitUri);
 using var connection = await factory.CreateConnectionAsync();
-using var channel = await connection.CreateChannelAsync(
-    new CreateChannelOptions(publisherConfirmationsEnabled: true, publisherConfirmationTrackingEnabled: true));
+using var channel = await connection.CreateChannelAsync(new CreateChannelOptions(publisherConfirmationsEnabled: true, publisherConfirmationTrackingEnabled: true));
 
-string interessesPath = Environment.GetEnvironmentVariable("Promocoes__InteressesPath")
-    ?? Path.Combine(solutionRootPath, "MS.Promocoes", "Dados", "interesses.json");
+var keyConfig = new KeyConfig
+{
+    ProducerName = "MS.Promocoes",
+    PrivateKeyPath = privateKeyPath,
+    SolutionRootPath = solutionRootPath
+};
+
+var promotionPublisher = new RabbitMqPublisher(connection, signatureService, keyConfig);
+
+string interessesPath = Environment.GetEnvironmentVariable("Promocoes__InteressesPath") ?? Path.Combine(solutionRootPath, "MS.Promocoes", "Dados", "interesses.json");
 var interessesStore = new InteressesStore(interessesPath);
 await using var interessesConsumer = new InteresseConsumer(connection, interessesStore, signatureService, solutionRootPath);
 await interessesConsumer.IniciarAsync();
-
-var emailOptions = EmailOptions.Carregar();
-using var emailHttpClient = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(20) };
-var emailEnviosStore = new EmailEnviosStore(Environment.GetEnvironmentVariable("Promocoes__EnviosPath")
-    ?? Path.Combine(solutionRootPath, "MS.Promocoes", "Dados", "envios.json"));
-var emailDispatcher = new PromocaoEmailDispatcher(interessesStore, emailEnviosStore,
-    new ResendEmailSender(emailHttpClient, emailOptions));
-await using var emailConsumer = new PromocaoEmailConsumer(connection, emailDispatcher, signatureService,
-    Path.Combine(solutionRootPath, "MS.Promocoes", "Keys", "MS.Promocoes.public.pem"));
-await emailConsumer.IniciarAsync(emailOptions.Configurado);
 
 if (args.Contains("--consumer-only"))
     await Task.Delay(Timeout.Infinite);
@@ -51,7 +49,6 @@ await channel.ExchangeDeclareAsync(
     durable: true
 );
 
-// Sample product catalog by category for random generation
 var categoryProducts = new Dictionary<string, string[]>
 {
     { "A", ["Smartphone Galaxy", "Notebook Gamer", "Monitor 4K", "Smart TV 55\""] },
@@ -166,6 +163,8 @@ async Task PublishPromotionAsync(Promocao promocao)
         basicProperties: new BasicProperties { Persistent = true },
         body: body
     );
+
+    await promotionPublisher.PublishEventAsync(promocao, "promocao.gerada");
 
     Console.WriteLine($"[MS.Promocoes] Evento publicado com sucesso!");
     Console.WriteLine($"  Exchange: Promoções (Topic)");
