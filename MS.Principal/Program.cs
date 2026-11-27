@@ -1,9 +1,11 @@
 using Foundation;
 using Foundation.Keys;
 using Foundation.Services;
+using MS.Principal.GraphQL;
 using MS.Principal.Services;
 using RabbitMQ.Client;
 using Scalar.AspNetCore;
+using Path = System.IO.Path;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -32,7 +34,7 @@ builder.Services.AddScoped<RabbitMqPublisher>();
 builder.Services.AddSingleton<PedidoEventosHub>();
 builder.Services.AddHostedService<PedidoEventosConsumerService>();
 
-builder.Services.AddHttpClient("EstoqueClient", client =>
+builder.Services.AddHttpClient<EstoqueGraphQLClient>(client =>
 {
     client.BaseAddress = new Uri(builder.Configuration["Estoque:Url"] ?? "https://localhost:7072/");
 });
@@ -49,6 +51,11 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddControllers();
+
+builder.AddGraphQL()
+    .AddQueryType<ProdutosQuery>()
+    .AddMutationType<PedidosMutation>();
+
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
@@ -68,5 +75,7 @@ app.UseCors("AllowFrontend");
 app.UseAuthorization();
 
 app.MapControllers();
+
+app.MapGraphQL();
 
 app.Run();

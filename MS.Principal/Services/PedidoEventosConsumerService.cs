@@ -6,6 +6,7 @@ using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using System.Text;
 using System.Text.Json;
+using Path = System.IO.Path;
 
 namespace MS.Principal.Services;
 
