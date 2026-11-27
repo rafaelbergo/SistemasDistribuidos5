@@ -4,7 +4,7 @@ using MS.Principal.Services;
 
 namespace MS.Principal.GraphQL;
 
-public class PedidosMutation
+public partial class PedidosMutation
 {
     public async Task<PedidoGraphQLResponse> CriarPedido(PedidoRequest input, EstoqueGraphQLClient estoqueClient, RabbitMqPublisher rabbitPublisher, CancellationToken ct)
     {
