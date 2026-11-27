@@ -1,0 +1,72 @@
+using Foundation;
+using Foundation.Keys;
+using Foundation.Services;
+using MS.Principal.Services;
+using RabbitMQ.Client;
+using Scalar.AspNetCore;
+
+var builder = WebApplication.CreateBuilder(args);
+
+string solutionRootPath = Directory.GetParent(builder.Environment.ContentRootPath)?.FullName ?? builder.Environment.ContentRootPath;
+
+var keyManagement = new KeyManagement(solutionRootPath, "MS.Principal");
+keyManagement.CheckKeys();
+
+var signature = new SignatureService();
+string privateKeyPath = Path.Combine(solutionRootPath, "MS.Principal", "Keys", "MS.Principal.private.pem");
+builder.Services.AddSingleton(signature);
+builder.Services.AddSingleton(new KeyConfig
+{
+    ProducerName = "MS.Principal",
+    PrivateKeyPath = privateKeyPath,
+    SolutionRootPath = solutionRootPath,
+});
+
+var factory = new ConnectionFactory { HostName = "localhost" };
+if (builder.Configuration["RabbitMq:Uri"] is { } rabbitUri)
+    factory.Uri = new Uri(rabbitUri);
+var rabbitConnection = await factory.CreateConnectionAsync();
+builder.Services.AddSingleton(rabbitConnection);
+builder.Services.AddScoped<RabbitMqPublisher>();
+
+builder.Services.AddSingleton<PedidoEventosHub>();
+builder.Services.AddHostedService<PedidoEventosConsumerService>();
+
+builder.Services.AddHttpClient("EstoqueClient", client =>
+{
+    client.BaseAddress = new Uri(builder.Configuration["Estoque:Url"] ?? "https://localhost:7072/");
+});
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowFrontend", policy =>
+    {
+        policy.WithOrigins("http://localhost:5173")
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials();
+    });
+});
+
+builder.Services.AddControllers();
+// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
+builder.Services.AddOpenApi();
+
+var app = builder.Build();
+
+// Configure the HTTP request pipeline.
+if (app.Environment.IsDevelopment())
+{
+    app.MapOpenApi();
+    app.MapScalarApiReference();
+}
+
+app.UseHttpsRedirection();
+
+app.UseCors("AllowFrontend");
+
+app.UseAuthorization();
+
+app.MapControllers();
+
+app.Run();
